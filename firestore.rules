@@ -56,6 +56,20 @@ service cloud.firestore {
         && request.resource.data.ownerId == request.auth.uid;
     }
 
+
+    match /usage/{userId} {
+      allow read: if isAdmin() || (request.auth != null && request.auth.uid == userId);
+      allow write: if false;
+    }
+    match /credit_wallets/{userId} {
+      allow read: if isAdmin() || (request.auth != null && request.auth.uid == userId);
+      allow write: if isAdmin() || (request.auth != null && request.auth.uid == userId);
+    }
+    match /credit_transactions/{txnId} {
+      allow read: if isAdmin() || (request.auth != null && resource.data.ownerId == request.auth.uid);
+      allow create: if request.auth != null && request.resource.data.ownerId == request.auth.uid;
+    }
+
     // ---------- Waitlist ----------
     match /waitlist/{entryId} {
       allow create: if true;
