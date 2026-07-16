@@ -35,6 +35,7 @@ export default function DashboardPage() {
   const [creating, setCreating] = useState(false);
   const [ready, setReady] = useState(false);
   const [cmdOpen, setCmdOpen] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
   const [cmdQuery, setCmdQuery] = useState("");
 
   useEffect(() => {
@@ -149,7 +150,7 @@ export default function DashboardPage() {
 
   return (
     <main className="max-w-6xl mx-auto px-6">
-      <nav className="flex items-center justify-between py-6">
+      <nav className="relative flex items-center justify-between py-6">
         <Link href="/">
           <Logo />
         </Link>
@@ -188,9 +189,11 @@ export default function DashboardPage() {
           >
             📚 Prompt Library
           </Link>
+          <Link href="/credits" className="hidden sm:block text-sm text-amber-300 hover:underline">⚡ Credits</Link>
           <span className="hidden sm:block text-sm text-zinc-400">
             {user?.email}
           </span>
+          <button onClick={() => setMenuOpen((v) => !v)} aria-label="Menu" className="sm:hidden btn-ghost px-3 py-1.5 rounded-xl text-lg leading-none text-zinc-300">☰</button>
           <button
             onClick={handleSignOut}
             className="btn-ghost px-3 py-1.5 rounded-xl text-sm text-zinc-300"
@@ -198,6 +201,15 @@ export default function DashboardPage() {
             Sign out
           </button>
         </div>
+        {menuOpen && (
+          <div className="sm:hidden absolute right-6 top-16 z-50 glass-strong rounded-2xl p-2 w-56 flex flex-col fade-up">
+            {isAdminEmail(user?.email) && (<Link href="/admin" onClick={() => setMenuOpen(false)} className="px-3 py-2 rounded-lg hover:bg-white/10 text-sm text-cyan-400">🛡 Admin</Link>)}
+            <Link href="/connections" onClick={() => setMenuOpen(false)} className="px-3 py-2 rounded-lg hover:bg-white/10 text-sm text-zinc-200">🔌 Connections</Link>
+            <Link href="/deployments" onClick={() => setMenuOpen(false)} className="px-3 py-2 rounded-lg hover:bg-white/10 text-sm text-zinc-200">🚀 Deployments</Link>
+            <Link href="/prompts" onClick={() => setMenuOpen(false)} className="px-3 py-2 rounded-lg hover:bg-white/10 text-sm text-zinc-200">📚 Prompt Library</Link>
+            <Link href="/credits" onClick={() => setMenuOpen(false)} className="px-3 py-2 rounded-lg hover:bg-white/10 text-sm text-amber-300">⚡ Credits</Link>
+          </div>
+        )}
       </nav>
 
       {/* Stat cards */}

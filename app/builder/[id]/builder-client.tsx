@@ -15,6 +15,9 @@ import {
 } from "firebase/firestore";
 import { auth, db } from "@/frontend/firebase/client";
 import { LogoMark } from "@/frontend/brand";
+import { onAuthStateChanged } from "firebase/auth";
+import { estimateCost, getOrCreateWallet, chargeCredits, walletView, freeTrialInfo } from "@/frontend/credits";
+import { isAdminEmail } from "@/backend/admin";
 
 export type Msg = { role: "user" | "assistant"; content: string };
 
@@ -141,6 +144,9 @@ export function BuilderClient({
   >({ status: "idle" });
   const [auditOpen, setAuditOpen] = useState(false);
   const [mode, setMode] = useState<Mode>("build");
+  const [credits, setCredits] = useState<number | null>(null);
+  const [resetAt, setResetAt] = useState<number | null>(null);
+  const [planExpired, setPlanExpired] = useState(false);
   const [showMoreModes, setShowMoreModes] = useState(false);
   const [provider, setProvider] = useState<"random" | "gemini" | "nvidia">(
     "random"
@@ -174,6 +180,17 @@ export function BuilderClient({
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
+
+  useEffect(() => {
+    const unsub = onAuthStateChanged(auth, (u) => {
+      if (u) {
+        getOrCreateWallet(u.uid)
+          .then((w) => { const v = walletView(w); setCredits(v.totalAvailable); setResetAt(v.nextReset); if (!isAdminEmail(u.email) && freeTrialInfo(w).expired) setPlanExpired(true); })
+          .catch(() => {});
+      }
+    });
+    return () => unsub();
+  }, []);
 
   /* ---------- Voice input (Web Speech API) ---------- */
   function toggleVoice() {
@@ -284,6 +301,11 @@ export function BuilderClient({
 
     const user = auth.currentUser;
     if (!user) return;
+
+    const admin = isAdminEmail(user.email);
+    const cost = estimateCost(mode, !!attachment);
+    if (!admin && planExpired) { setMessages((prev) => [...prev, { role: "assistant", content: "⚠️ Your 30-day free plan has ended. Upgrade on the Plans page to keep building." }]); return; }
+    if (!admin && credits !== null && credits < cost) { setMessages((prev) => [...prev, { role: "assistant", content: `⚠️ Out of credits — this needs ${cost} and you have ${credits}. Buy more on the Plans page.` }]); return; }
 
     if (textareaRef.current) textareaRef.current.style.height = "auto";
 
@@ -411,6 +433,7 @@ export function BuilderClient({
         content: full,
         createdAt: serverTimestamp(),
       });
+      if (!admin) { try { await chargeCredits(user.uid, cost, `${mode} generation`); setCredits((c) => (c !== null ? c - cost : c)); } catch {} }
     } catch {
       setMessages((prev) => [
         ...prev.slice(0, -1),
@@ -789,6 +812,12 @@ export function BuilderClient({
                 </span>
               )}
             </div>
+            {credits !== null && (
+              <div className="mt-2 flex items-center justify-between text-[11px]">
+                <span className="text-zinc-400">⚡ <span className="tabular-nums font-semibold text-white">{credits.toLocaleString()}</span> credits</span>
+                <Link href="/credits" className="text-violet-400 hover:underline">Usage</Link>
+              </div>
+            )}
           </div>
 
           <div className="flex-1 overflow-y-auto p-4 space-y-4">
