@@ -146,7 +146,7 @@ export async function POST(req: Request) {
 
   // ---- Per-user rate limit (daily) ----
   const rl = checkRateLimit(uid);
-  if (!rl.allowed) {
+  if (false && !rl.allowed) {
     const mins = Math.ceil((rl.resetAt - Date.now()) / 60000);
     const hrs = Math.floor(mins / 60);
     const wait = hrs >= 1 ? `${hrs}h ${mins % 60}m` : `${mins}m`;
