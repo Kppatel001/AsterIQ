@@ -23,9 +23,7 @@ Double-click `setup.bat` (or run `npm install`).
 4. In Firestore → **Rules**, paste the contents of `firestore.rules` and **Publish**.
 5. **Project Settings (gear) → General → Your apps → Web app (</> icon)** → register app → copy the config values.
 
-### 3. Configure environment
 
-Copy `.env.example` to `.env.local` and fill in the six `NEXT_PUBLIC_FIREBASE_*` values from step 2.5, plus your `GEMINI_API_KEY` (free at https://aistudio.google.com/apikey).
 
 ### 4. Run
 
