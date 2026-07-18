@@ -32,7 +32,7 @@ async function verifyFirebaseToken(authHeader: string | null) {
   }
 }
 
-type Mode = "auto" | "build" | "ask" | "fix" | "improve" | "ceo" | "architect";
+type Mode = "auto" | "build" | "ask" | "fix" | "improve" | "ceo" | "architect" | "project";
 
 /* ================= ASTRA MASTER PROMPT ================= */
 
@@ -108,6 +108,24 @@ Markdown only — NO \`\`\`html block. Produce a decisive plan, under 450 words:
 8. Top 3 risks with one-line mitigations.
 End with up to 3 sharp clarifying questions, then: "Reply 'build it' and I'll ship Version 1."`,
 
+  project: `MODE: project (Full multi-file application)
+OVERRIDE the single-file HTML output contract above. In this mode you produce a COMPLETE, multi-file Next.js (App Router) + React + TypeScript + Tailwind project.
+
+OUTPUT FORMAT — STRICT. For every file emit exactly this, in order:
+### FILE: <relative/path/from/project/root>
+\`\`\`<language>
+<the full file contents>
+\`\`\`
+
+Rules:
+1. Emit 7–14 files. Always include: package.json, tsconfig.json, next.config.ts, postcss.config.mjs, app/layout.tsx, app/page.tsx, app/globals.css, README.md — plus components/ and lib/ files the app actually needs.
+2. Every file must be COMPLETE and runnable exactly as written. Never use placeholders, "...", "rest unchanged", or TODO.
+3. Keep dependencies standard and minimal (next, react, react-dom, typescript, tailwindcss, postcss, autoprefixer). Pin nothing exotic.
+4. Split the UI into real components under components/ — do not put everything in page.tsx.
+5. Tailwind must be configured properly (globals.css with @tailwind directives + postcss config).
+6. README.md must explain: npm install, npm run dev, and what the app does.
+7. Before the first file, write 2–4 sentences describing the app and its file structure. After the last file, write nothing.
+8. Do NOT output a single-file HTML app in this mode.`,
   ceo: `MODE: ceo
 Act as a startup co-founder analyzing the user's app as a business. Produce a markdown "Startup Pack": one-line pitch, target user and problem, India-focused market snapshot, 3 competitors with your edge, pricing model in ₹, go-to-market first 90 days, key risks, and 5 immediate action items. Ground everything in the actual app in the current code — no generic filler. No code block.`,
 };

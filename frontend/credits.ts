@@ -11,8 +11,8 @@ export const PLANS: Plan[] = [
 export function dailyAllowance(planId: PlanId): number { const p = PLANS.find((x) => x.id === planId); return Math.floor((p?.credits ?? 2000) / 30); }
 export type Pack = { credits: number; price: number };
 export const PACKS: Pack[] = [{ credits: 5000, price: 199 },{ credits: 10000, price: 399 },{ credits: 25000, price: 999 },{ credits: 50000, price: 1999 },{ credits: 100000, price: 3999 },{ credits: 250000, price: 5999 }];
-export type Mode = "auto" | "build" | "ask" | "fix" | "improve" | "architect" | "ceo";
-export function estimateCost(mode: Mode, hasAttachment = false): number { const base: Record<Mode, number> = { ask: 5, architect: 15, ceo: 20, fix: 20, improve: 25, auto: 30, build: 40 }; return base[mode] + (hasAttachment ? 5 : 0); }
+export type Mode = "auto" | "build" | "ask" | "fix" | "improve" | "architect" | "ceo" | "project";
+export function estimateCost(mode: Mode, hasAttachment = false): number { const base: Record<Mode, number> = { ask: 5, architect: 15, ceo: 20, fix: 20, improve: 25, auto: 30, build: 40, project: 150 }; return base[mode] + (hasAttachment ? 5 : 0); }
 export function todayKey(): string { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`; }
 export function nextDailyReset(): number { const d = new Date(); d.setHours(24,0,0,0); return d.getTime(); }
 export const FREE_TRIAL_MS = 30*24*60*60*1000;
