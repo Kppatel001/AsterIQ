@@ -147,6 +147,7 @@ export function BuilderClient({
   const [credits, setCredits] = useState<number | null>(null);
   const [resetAt, setResetAt] = useState<number | null>(null);
   const [planExpired, setPlanExpired] = useState(false);
+  const [isAdminUser, setIsAdminUser] = useState(false);
   const [showMoreModes, setShowMoreModes] = useState(false);
   const [provider, setProvider] = useState<"random" | "gemini" | "nvidia">(
     "random"
@@ -184,6 +185,7 @@ export function BuilderClient({
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (u) => {
       if (u) {
+        setIsAdminUser(isAdminEmail(u.email));
         getOrCreateWallet(u.uid)
           .then((w) => { const v = walletView(w); setCredits(v.totalAvailable); setResetAt(v.nextReset); if (!isAdminEmail(u.email) && freeTrialInfo(w).expired) setPlanExpired(true); })
           .catch(() => {});
@@ -773,48 +775,13 @@ export function BuilderClient({
               </div>
             )}
 
-            {/* AI engine selector — random rotates Gemini & NVIDIA */}
-            <div className="mt-2 flex items-center justify-between gap-2">
-              <div className="flex items-center gap-1 rounded-lg bg-white/5 p-0.5">
-                {(
-                  [
-                    { id: "random", label: "🎲 Random" },
-                    { id: "gemini", label: "Gemini" },
-                    { id: "nvidia", label: "NVIDIA" },
-                  ] as const
-                ).map((p) => (
-                  <button
-                    key={p.id}
-                    onClick={() => setProvider(p.id)}
-                    title={
-                      p.id === "random"
-                        ? "Randomly use Gemini or NVIDIA each request"
-                        : `Always use ${p.label}`
-                    }
-                    className={`px-2 py-1 rounded-md text-[11px] font-medium transition-all ${
-                      provider === p.id
-                        ? "bg-gradient-to-r from-blue-600 to-violet-500 text-white"
-                        : "text-zinc-400 hover:text-white"
-                    }`}
-                  >
-                    {p.label}
-                  </button>
-                ))}
-              </div>
-              {quota && (
-                <span
-                  title="Your remaining generations today"
-                  className={`text-[11px] tabular-nums ${
-                    quota.remaining <= 3 ? "text-amber-400" : "text-zinc-500"
-                  }`}
-                >
-                  {quota.remaining}/{quota.limit} left
-                </span>
-              )}
-            </div>
-            {credits !== null && (
+            {(isAdminUser || credits !== null) && (
               <div className="mt-2 flex items-center justify-between text-[11px]">
-                <span className="text-zinc-400">⚡ <span className="tabular-nums font-semibold text-white">{credits.toLocaleString()}</span> credits</span>
+                {isAdminUser ? (
+                  <span className="text-zinc-400">⚡ <span className="font-semibold text-white">Unlimited</span> (admin)</span>
+                ) : (
+                  <span className="text-zinc-400">⚡ <span className="tabular-nums font-semibold text-white">{credits?.toLocaleString()}</span> credits</span>
+                )}
                 <Link href="/credits" className="text-violet-400 hover:underline">Usage</Link>
               </div>
             )}
