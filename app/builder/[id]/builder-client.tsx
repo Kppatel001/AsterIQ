@@ -162,6 +162,7 @@ export function BuilderClient({
   const [mode, setMode] = useState<Mode>("build");
   const [credits, setCredits] = useState<number | null>(null);
   const [usagePct, setUsagePct] = useState<number | null>(null);
+  const overrideRef = useRef<{ text?: string; mode?: Mode } | null>(null);
   const [resetAt, setResetAt] = useState<number | null>(null);
   const [planExpired, setPlanExpired] = useState(false);
   const [files, setFiles] = useState<Record<string, string>>(project.files || {});
@@ -315,16 +316,26 @@ export function BuilderClient({
   }
 
   /* ---------- Generation ---------- */
-  async function send(e?: React.FormEvent) {
+  /** Approve the requirements document and start the build from it. */
+  function approveAndBuild() {
+    if (busy) return;
+    setMode("build");
+    void send(undefined, { text: "build it", mode: "build" });
+  }
+
+  async function send(e?: React.FormEvent, override?: { text?: string; mode?: Mode }) {
     e?.preventDefault();
-    const prompt = input.trim();
+    const ov = override ?? overrideRef.current;
+    overrideRef.current = null;
+    const activeMode: Mode = ov?.mode ?? mode;
+    const prompt = (ov?.text ?? input).trim();
     if ((!prompt && !attachment) || busy) return;
 
     const user = auth.currentUser;
     if (!user) return;
 
     const admin = isAdminEmail(user.email);
-    const cost = estimateCost(mode, !!attachment);
+    const cost = estimateCost(activeMode, !!attachment);
     if (!admin && planExpired) { setMessages((prev) => [...prev, { role: "assistant", content: "⚠️ Your 30-day free plan has ended. Upgrade on the Plans page to keep building." }]); return; }
     if (!admin && credits !== null && credits < cost) { setMessages((prev) => [...prev, { role: "assistant", content: `⚠️ You have used all of today's AI credits. They reset tomorrow at 12:00 AM — or buy a credit pack on the Plans page to keep building now.` }]); return; }
 
@@ -360,7 +371,7 @@ export function BuilderClient({
         body: JSON.stringify({
           messages: history,
           currentCode: code,
-          mode,
+          mode: activeMode,
           provider,
           attachment: sendAttachment || undefined,
           projectName: project.name,
@@ -409,14 +420,14 @@ export function BuilderClient({
           ...prev.slice(0, -1),
           { role: "assistant", content: snapshot },
         ]);
-        if (mode !== "ask" && mode !== "architect" && mode !== "ceo" && mode !== "project") {
+        if (activeMode !== "ask" && activeMode !== "architect" && activeMode !== "ceo" && activeMode !== "project") {
           const html = extractHtml(snapshot);
           if (html) setCode(html);
         }
       }
 
       const finalHtml =
-        mode !== "ask" && mode !== "architect" && mode !== "ceo" && mode !== "project"
+        activeMode !== "ask" && activeMode !== "architect" && activeMode !== "ceo" && activeMode !== "project"
           ? extractHtml(full)
           : null;
       if (finalHtml) {
@@ -427,7 +438,7 @@ export function BuilderClient({
         });
         await saveVersion(finalHtml, content);
       }
-      if (mode === "project") {
+      if (activeMode === "project") {
         const parsed = parseFiles(full);
         if (Object.keys(parsed).length > 0) {
           setFiles(parsed);
@@ -436,7 +447,7 @@ export function BuilderClient({
         }
       }
       // CEO mode: save the startup pack as the project's business plan
-      if (mode === "ceo") {
+      if (activeMode === "ceo") {
         const planText = full.split("```html")[0].trim();
         if (planText.length > 50) {
           setBusinessPlan(planText);
@@ -445,10 +456,10 @@ export function BuilderClient({
           });
         }
       }
-      // Architect mode (or an auto-mode planning response): save the build plan
+      // Architect mode (or an auto-activeMode planning response): save the build plan
       const isAutoPlan =
-        mode === "auto" && !finalHtml && full.includes("Planning Mode");
-      if (mode === "architect" || isAutoPlan) {
+        activeMode === "auto" && !finalHtml && full.includes("Planning Mode");
+      if (activeMode === "architect" || isAutoPlan) {
         const planText = full.trim();
         if (planText.length > 50) {
           setBuildPlan(planText);
@@ -462,7 +473,7 @@ export function BuilderClient({
         content: full,
         createdAt: serverTimestamp(),
       });
-      if (!admin) { try { await chargeCredits(user.uid, cost, `${mode} generation`); setCredits((c) => (c !== null ? c - cost : c));
+      if (!admin) { try { await chargeCredits(user.uid, cost, `${activeMode} generation`); setCredits((c) => (c !== null ? c - cost : c));
           try { const w2 = await getOrCreateWallet(user.uid); const v2 = walletView(w2); setUsagePct(v2.allowance > 0 ? Math.min(100, Math.round((v2.usedToday / v2.allowance) * 100)) : 0); } catch {} } catch {} }
     } catch {
       setMessages((prev) => [
@@ -773,6 +784,20 @@ export function BuilderClient({
           {/* Mode selector */}
           <div className="p-3 border-b border-white/5">
             {/* Primary choice: Planning vs Fast */}
+            {buildPlan && !busy && !code && fileNames.length === 0 && (
+              <div className="mb-2 flex flex-wrap items-center gap-2 rounded-xl border border-violet-500/30 bg-violet-500/10 px-3 py-2">
+                <span className="text-xs text-violet-200">
+                  📋 Requirements ready — approve to build, or type what to change.
+                </span>
+                <button
+                  type="button"
+                  onClick={approveAndBuild}
+                  className="ml-auto btn-primary px-3 py-1.5 rounded-lg text-xs whitespace-nowrap"
+                >
+                  ✓ Approve &amp; Build
+                </button>
+              </div>
+            )}
             <div className="grid grid-cols-3 gap-1.5 rounded-xl bg-white/5 p-1">
               {PRIMARY_MODES.map((m) => (
                 <button
