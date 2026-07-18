@@ -139,6 +139,55 @@ node_modules/
   ];
 }
 
+/** Files for a multi-file (framework) project — generated files win, we only add what's missing. */
+function buildProjectRepoFiles(opts: {
+  name: string;
+  projectFiles: Record<string, string>;
+  login: string;
+  repo: string;
+}): { path: string; content: string }[] {
+  const { name, projectFiles, login, repo } = opts;
+  const year = new Date().getFullYear();
+  const out: { path: string; content: string }[] = Object.entries(projectFiles)
+    .filter(([p, c]) => p && typeof c === "string")
+    .map(([path, content]) => ({ path: path.replace(/^\.?\//, ""), content }));
+  const has = (p: string) => out.some((f) => f.path.toLowerCase() === p.toLowerCase());
+
+  if (!has("README.md")) {
+    out.push({
+      path: "README.md",
+      content: `# ${name}\n\nBuilt with **${APP_NAME}** — India's AI no-code platform.\n\n## Run locally\n\n\`\`\`bash\nnpm install\nnpm run dev\n\`\`\`\n\nThen open http://localhost:3000\n\n## Deploy\n\nImport this repository at [vercel.com/new](https://vercel.com/new/import?s=https://github.com/${login}/${repo}) — no configuration needed.\n\n---\n_Generated on ${new Date().toISOString().slice(0, 10)}_\n`,
+    });
+  }
+  if (!has(".gitignore")) {
+    out.push({
+      path: ".gitignore",
+      content: "node_modules/\n.next/\nout/\n.env\n.env*.local\n*.tsbuildinfo\nnext-env.d.ts\n.DS_Store\n",
+    });
+  }
+  out.push({
+    path: "LICENSE",
+    content: `MIT License\n\nCopyright (c) ${year} ${login}\n\nPermission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:\n\nThe above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.\n\nTHE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED.\n`,
+  });
+  out.push({
+    path: "asteriq.json",
+    content: JSON.stringify(
+      {
+        name,
+        generator: `${APP_NAME} AI`,
+        type: "framework-project",
+        framework: "nextjs",
+        repository: `https://github.com/${login}/${repo}`,
+        files: out.length,
+        deployedAt: new Date().toISOString(),
+      },
+      null,
+      2
+    ),
+  });
+  return out;
+}
+
 /** Push all files as ONE atomic commit using the Git Data API. */
 async function pushAllFiles(
   token: string,
@@ -219,14 +268,18 @@ export async function POST(req: Request) {
     return Response.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const { name, code, githubToken, existingRepo } = (await req.json()) as {
+  const { name, code, projectFiles, githubToken, existingRepo } = (await req.json()) as {
     name: string;
-    code: string;
+    code?: string;
+    /** Multi-file project: path -> file contents. Takes priority over `code`. */
+    projectFiles?: Record<string, string>;
     githubToken?: string;
     /** Repo name from a previous deploy — reuse it, never create a duplicate */
     existingRepo?: string;
   };
-  if (!name || !code) {
+  const isProject =
+    !!projectFiles && typeof projectFiles === "object" && Object.keys(projectFiles).length > 0;
+  if (!name || (!code && !isProject)) {
     return Response.json({ error: "Missing name or code" }, { status: 400 });
   }
 
@@ -288,7 +341,9 @@ export async function POST(req: Request) {
     }
 
     // Push the complete project in one commit
-    const files = buildRepoFiles({ name, code, login, repo });
+    const files = isProject
+      ? buildProjectRepoFiles({ name, projectFiles: projectFiles!, login, repo })
+      : buildRepoFiles({ name, code: code || "", login, repo });
     const push = await pushAllFiles(
       token,
       login,
@@ -300,16 +355,22 @@ export async function POST(req: Request) {
       return Response.json({ error: push.error }, { status: 500 });
     }
 
-    // Enable GitHub Pages (409 = already enabled)
-    await fetch(`${GH}/repos/${login}/${repo}/pages`, {
-      method: "POST",
-      headers: ghHeaders(token),
-      body: JSON.stringify({ source: { branch: "main", path: "/" } }),
-    }).catch(() => null);
+    // GitHub Pages only serves static files — a framework project needs a build step.
+    if (!isProject) {
+      await fetch(`${GH}/repos/${login}/${repo}/pages`, {
+        method: "POST",
+        headers: ghHeaders(token),
+        body: JSON.stringify({ source: { branch: "main", path: "/" } }),
+      }).catch(() => null);
+    }
 
     return Response.json({
       repoUrl: `https://github.com/${login}/${repo}`,
-      pagesUrl: `https://${login}.github.io/${repo}/`,
+      pagesUrl: isProject ? null : `https://${login}.github.io/${repo}/`,
+      importUrl: isProject
+        ? `https://vercel.com/new/import?s=https://github.com/${login}/${repo}`
+        : null,
+      type: isProject ? "project" : "static",
       repoName: repo,
       filesPushed: files.map((f) => f.path),
     });

@@ -566,7 +566,7 @@ export function BuilderClient({
           "Content-Type": "application/json",
           Authorization: `Bearer ${idToken}`,
         },
-        body: JSON.stringify({ name: project.name, code, githubToken, existingRepo }),
+        body: JSON.stringify({ name: project.name, code, projectFiles: Object.keys(files).length > 0 ? files : undefined, githubToken, existingRepo }),
       });
       const data = await res.json();
       clearInterval(stageTimer);
