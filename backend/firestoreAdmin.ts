@@ -31,7 +31,9 @@ async function accessToken(): Promise<string | null> {
     const key = await importPKCS8(PRIVATE_KEY, "RS256");
     const now = Math.floor(Date.now() / 1000);
     const assertion = await new SignJWT({
-      scope: "https://www.googleapis.com/auth/datastore",
+      // datastore = Firestore, identitytoolkit = deleting auth accounts.
+      scope:
+        "https://www.googleapis.com/auth/datastore https://www.googleapis.com/auth/identitytoolkit",
     })
       .setProtectedHeader({ alg: "RS256" })
       .setIssuer(CLIENT_EMAIL)
@@ -134,6 +136,32 @@ export async function addDocFields(collectionPath: string, fields: FsFields): Pr
     headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
     body: JSON.stringify({ fields }),
   });
+  return res.ok;
+}
+
+/** Delete a single document. */
+export async function deleteDocPath(path: string): Promise<boolean> {
+  const token = await accessToken();
+  if (!token) return false;
+  const res = await fetch(`${BASE}/${path}`, {
+    method: "DELETE",
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  return res.ok;
+}
+
+/** Permanently delete a Firebase Auth account. */
+export async function deleteAuthUser(uid: string): Promise<boolean> {
+  const token = await accessToken();
+  if (!token) return false;
+  const res = await fetch(
+    `https://identitytoolkit.googleapis.com/v1/projects/${PROJECT_ID}/accounts:delete`,
+    {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ localId: uid }),
+    }
+  );
   return res.ok;
 }
 

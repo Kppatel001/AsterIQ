@@ -2,8 +2,8 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { collection, getDocs } from "firebase/firestore";
-import { db } from "@/frontend/firebase/client";
+import { collection, getDocs, deleteDoc, doc, query, where } from "firebase/firestore";
+import { auth, db } from "@/frontend/firebase/client";
 import { ADMIN_EMAILS } from "@/backend/admin";
 
 type UserRow = {
@@ -18,6 +18,50 @@ export default function AdminUsers() {
   const [projectCounts, setProjectCounts] = useState<Record<string, number>>({});
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
+  const [confirming, setConfirming] = useState<string | null>(null);
+  const [removing, setRemoving] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+
+  /** Deletes the login, the profile, the wallet and every project they own. */
+  async function removeUser(u: UserRow) {
+    if (removing) return;
+    setRemoving(u.id);
+    setNotice(null);
+    try {
+      const token = await auth.currentUser?.getIdToken();
+      const res = await fetch("/api/admin/remove-user", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ uid: u.id, email: u.email }),
+      });
+      const data = await res.json().catch(() => ({}));
+
+      if (!res.ok && !data.needsSetup) {
+        setNotice(data.error || "Could not remove this user.");
+        return;
+      }
+
+      // Remove the projects they own, then their records if the server couldn't.
+      const owned = await getDocs(query(collection(db, "projects"), where("ownerId", "==", u.id)));
+      await Promise.all(owned.docs.map((d) => deleteDoc(d.ref).catch(() => null)));
+      if (data.needsSetup) {
+        await deleteDoc(doc(db, "users", u.id)).catch(() => null);
+        await deleteDoc(doc(db, "credit_wallets", u.id)).catch(() => null);
+        setNotice(
+          `${u.email || "User"}'s data was removed, but their login still exists. ${data.error}`
+        );
+      } else {
+        setNotice(`${u.email || "User"} was removed.`);
+      }
+
+      setUsers((prev) => prev.filter((x) => x.id !== u.id));
+    } catch {
+      setNotice("Could not remove this user — check your connection and try again.");
+    } finally {
+      setRemoving(null);
+      setConfirming(null);
+    }
+  }
 
   useEffect(() => {
     (async () => {
@@ -62,6 +106,15 @@ export default function AdminUsers() {
         />
       </div>
 
+      {notice && (
+        <div className="rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-zinc-300 flex items-start gap-3">
+          <span className="flex-1">{notice}</span>
+          <button onClick={() => setNotice(null)} className="text-zinc-500 hover:text-white">
+            ✕
+          </button>
+        </div>
+      )}
+
       {loading ? (
         <p className="text-sm text-zinc-500">Loading users…</p>
       ) : (
@@ -98,12 +151,43 @@ export default function AdminUsers() {
                       : "—"}
                   </td>
                   <td className="px-4 py-3">
-                    <Link
-                      href={`/admin/projects?owner=${u.id}`}
-                      className="text-xs text-violet-400 hover:underline"
-                    >
-                      View projects →
-                    </Link>
+                    <div className="flex items-center gap-3 whitespace-nowrap">
+                      <Link
+                        href={`/admin/projects?owner=${u.id}`}
+                        className="text-xs text-violet-400 hover:underline"
+                      >
+                        View projects →
+                      </Link>
+                      {ADMIN_EMAILS.includes((u.email || "").toLowerCase()) ? null : confirming ===
+                        u.id ? (
+                        <span className="flex items-center gap-2 text-xs">
+                          <span className="text-zinc-400">Remove?</span>
+                          <button
+                            onClick={() => removeUser(u)}
+                            disabled={removing === u.id}
+                            className="rounded-lg bg-red-500/20 text-red-300 border border-red-500/40 px-2 py-1 hover:bg-red-500/30 disabled:opacity-50"
+                          >
+                            {removing === u.id ? "Removing…" : "Yes, remove"}
+                          </button>
+                          <button
+                            onClick={() => setConfirming(null)}
+                            className="text-zinc-400 hover:text-white"
+                          >
+                            Cancel
+                          </button>
+                        </span>
+                      ) : (
+                        <button
+                          onClick={() => {
+                            setNotice(null);
+                            setConfirming(u.id);
+                          }}
+                          className="text-xs text-red-400 hover:text-red-300 hover:underline"
+                        >
+                          Remove
+                        </button>
+                      )}
+                    </div>
                   </td>
                 </tr>
               ))}
