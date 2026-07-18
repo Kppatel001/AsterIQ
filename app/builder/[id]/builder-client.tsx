@@ -21,7 +21,7 @@ import { isAdminEmail } from "@/backend/admin";
 
 export type Msg = { role: "user" | "assistant"; content: string };
 
-type Mode = "auto" | "build" | "ask" | "fix" | "improve" | "architect" | "ceo";
+type Mode = "auto" | "build" | "ask" | "fix" | "improve" | "architect" | "ceo" | "project";
 type Device = "desktop" | "tablet" | "mobile";
 
 type AuditFix = {
@@ -74,11 +74,13 @@ const MODES: { id: Mode; label: string; hint: string }[] = [
   { id: "fix", label: "🔧", hint: "Fix — diagnose and repair a bug" },
   { id: "ask", label: "💬", hint: "Ask — questions and advice, no code" },
   { id: "architect", label: "📐", hint: "Plan — architecture before building" },
+  { id: "project", label: "🗂", hint: "Project — full multi-file Next.js app" },
   { id: "ceo", label: "👑", hint: "CEO — analyze your app as a business" },
 ];
 
 // Primary chat-box choice: Planning (plan the idea + write requirements) vs Fast (build the code).
 const PRIMARY_MODES: { id: Mode; icon: string; name: string; hint: string }[] = [
+  { id: "project", icon: "🗂", name: "Project", hint: "Full multi-file Next.js project — browse files in Code, deploy to run" },
   {
     id: "architect",
     icon: "📐",
@@ -94,6 +96,18 @@ const PRIMARY_MODES: { id: Mode; icon: string; name: string; hint: string }[] = 
 ];
 // Secondary modes stay available as small icons.
 const SECONDARY_MODES: Mode[] = ["auto", "improve", "fix", "ask", "ceo"];
+
+/** Parse a multi-file project response: "### FILE: path" followed by a fenced block. */
+function parseFiles(text: string): Record<string, string> {
+  const out: Record<string, string> = {};
+  const re = /###\s*FILE:\s*(.+?)\s*\n+```[a-zA-Z0-9]*\n([\s\S]*?)```/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(text)) !== null) {
+    const path = m[1].trim().replace(/^[`'"]+|[`'"]+$/g, "");
+    if (path) out[path] = m[2];
+  }
+  return out;
+}
 
 const DEVICE_WIDTHS: Record<Device, string> = {
   desktop: "100%",
@@ -124,6 +138,7 @@ export function BuilderClient({
     id: string;
     name: string;
     code: string;
+    files?: Record<string, string>;
     businessPlan?: string;
     buildPlan?: string;
   };
@@ -147,6 +162,8 @@ export function BuilderClient({
   const [credits, setCredits] = useState<number | null>(null);
   const [resetAt, setResetAt] = useState<number | null>(null);
   const [planExpired, setPlanExpired] = useState(false);
+  const [files, setFiles] = useState<Record<string, string>>(project.files || {});
+  const [activeFile, setActiveFile] = useState<string>("");
   const [isAdminUser, setIsAdminUser] = useState(false);
   const [showMoreModes, setShowMoreModes] = useState(false);
   const [provider, setProvider] = useState<"random" | "gemini" | "nvidia">(
@@ -390,14 +407,14 @@ export function BuilderClient({
           ...prev.slice(0, -1),
           { role: "assistant", content: snapshot },
         ]);
-        if (mode !== "ask" && mode !== "architect" && mode !== "ceo") {
+        if (mode !== "ask" && mode !== "architect" && mode !== "ceo" && mode !== "project") {
           const html = extractHtml(snapshot);
           if (html) setCode(html);
         }
       }
 
       const finalHtml =
-        mode !== "ask" && mode !== "architect" && mode !== "ceo"
+        mode !== "ask" && mode !== "architect" && mode !== "ceo" && mode !== "project"
           ? extractHtml(full)
           : null;
       if (finalHtml) {
@@ -407,6 +424,14 @@ export function BuilderClient({
           updatedAt: serverTimestamp(),
         });
         await saveVersion(finalHtml, content);
+      }
+      if (mode === "project") {
+        const parsed = parseFiles(full);
+        if (Object.keys(parsed).length > 0) {
+          setFiles(parsed);
+          setActiveFile(Object.keys(parsed)[0]);
+          await updateDoc(doc(db, "projects", project.id), { files: parsed, updatedAt: serverTimestamp() });
+        }
       }
       // CEO mode: save the startup pack as the project's business plan
       if (mode === "ceo") {
@@ -582,6 +607,8 @@ export function BuilderClient({
   }
 
   const activeModeInfo = MODES.find((m) => m.id === mode)!;
+  const fileNames = Object.keys(files);
+  const currentFile = files[activeFile] !== undefined ? activeFile : (fileNames[0] || "");
 
   return (
     <div className="h-screen flex flex-col">
@@ -725,7 +752,7 @@ export function BuilderClient({
           {/* Mode selector */}
           <div className="p-3 border-b border-white/5">
             {/* Primary choice: Planning vs Fast */}
-            <div className="grid grid-cols-2 gap-1.5 rounded-xl bg-white/5 p-1">
+            <div className="grid grid-cols-3 gap-1.5 rounded-xl bg-white/5 p-1">
               {PRIMARY_MODES.map((m) => (
                 <button
                   key={m.id}
@@ -925,7 +952,24 @@ export function BuilderClient({
         {/* Preview / Code panel */}
         <div className="flex-1 min-w-0 bg-black/20 flex items-stretch justify-center overflow-auto">
           {tab === "preview" ? (
-            code ? (
+            fileNames.length > 0 ? (
+              <div className="h-full w-full overflow-auto p-6">
+                <div className="max-w-2xl mx-auto glass rounded-2xl p-6">
+                  <div className="flex items-center gap-3">
+                    <LogoMark size={28} />
+                    <div>
+                      <h2 className="font-bold">Full project generated</h2>
+                      <p className="text-xs text-zinc-400">{fileNames.length} files · Next.js + React + TypeScript</p>
+                    </div>
+                  </div>
+                  <p className="mt-4 text-sm text-zinc-400">Multi-file projects need a build step, so they can&apos;t run in the live preview. Open the <span className="text-white font-medium">Code</span> tab to browse files, or deploy to run it.</p>
+                  <div className="mt-4 rounded-xl bg-black/30 border border-white/10 p-3 max-h-64 overflow-auto">
+                    {fileNames.map((f) => (<p key={f} className="text-[11px] font-mono text-zinc-400 py-0.5">📄 {f}</p>))}
+                  </div>
+                  <p className="mt-4 text-xs text-zinc-500">Run locally: <span className="font-mono text-zinc-300">npm install &amp;&amp; npm run dev</span></p>
+                </div>
+              </div>
+            ) : code ? (
               <div
                 className="h-full transition-all duration-300 mx-auto"
                 style={{
@@ -951,9 +995,22 @@ export function BuilderClient({
               </div>
             )
           ) : tab === "code" ? (
-            <pre className="h-full w-full overflow-auto p-4 text-xs text-zinc-300 font-mono">
-              {code || "// No code yet"}
-            </pre>
+            fileNames.length > 0 ? (
+              <div className="h-full w-full flex min-h-0">
+                <div className="w-52 shrink-0 border-r border-white/10 overflow-y-auto p-2">
+                  <p className="px-2 py-1 text-[10px] uppercase tracking-wider text-zinc-500">Files</p>
+                  {fileNames.map((f) => (
+                    <button key={f} onClick={() => setActiveFile(f)} title={f}
+                      className={`w-full text-left px-2 py-1.5 rounded-md text-[11px] font-mono truncate ${currentFile === f ? "bg-white/10 text-white" : "text-zinc-400 hover:text-white hover:bg-white/5"}`}>
+                      {f}
+                    </button>
+                  ))}
+                </div>
+                <pre className="flex-1 overflow-auto p-4 text-xs text-zinc-300 font-mono">{files[currentFile] || ""}</pre>
+              </div>
+            ) : (
+              <pre className="h-full w-full overflow-auto p-4 text-xs text-zinc-300 font-mono">{code || "// No code yet"}</pre>
+            )
           ) : (
             <div className="h-full w-full overflow-auto p-6">
               <div className="max-w-2xl mx-auto glass rounded-2xl p-6">

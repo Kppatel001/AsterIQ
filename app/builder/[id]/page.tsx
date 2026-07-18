@@ -26,6 +26,7 @@ export default function BuilderPage({
     id: string;
     name: string;
     code: string;
+    files?: Record<string, string>;
     businessPlan?: string;
     buildPlan?: string;
   } | null>(null);
@@ -60,6 +61,7 @@ export default function BuilderPage({
           id: snap.id,
           name: data.name,
           code: data.code || "",
+          files: data.files || {},
           businessPlan: data.businessPlan || "",
           buildPlan: data.buildPlan || "",
         });
