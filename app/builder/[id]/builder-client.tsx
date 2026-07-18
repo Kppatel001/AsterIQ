@@ -775,16 +775,6 @@ export function BuilderClient({
               </div>
             )}
 
-            {(isAdminUser || credits !== null) && (
-              <div className="mt-2 flex items-center justify-between text-[11px]">
-                {isAdminUser ? (
-                  <span className="text-zinc-400">⚡ <span className="font-semibold text-white">Unlimited</span> (admin)</span>
-                ) : (
-                  <span className="text-zinc-400">⚡ <span className="tabular-nums font-semibold text-white">{credits?.toLocaleString()}</span> credits</span>
-                )}
-                <Link href="/credits" className="text-violet-400 hover:underline">Usage</Link>
-              </div>
-            )}
           </div>
 
           <div className="flex-1 overflow-y-auto p-4 space-y-4">
