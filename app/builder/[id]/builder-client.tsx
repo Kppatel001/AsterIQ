@@ -17,6 +17,7 @@ import { auth, db } from "@/frontend/firebase/client";
 import { LogoMark } from "@/frontend/brand";
 import { onAuthStateChanged } from "firebase/auth";
 import { estimateCost, getOrCreateWallet, chargeCredits, walletView, freeTrialInfo } from "@/frontend/credits";
+import { UsageBar } from "@/frontend/usage";
 import { isAdminEmail } from "@/backend/admin";
 
 export type Msg = { role: "user" | "assistant"; content: string };
@@ -160,6 +161,7 @@ export function BuilderClient({
   const [auditOpen, setAuditOpen] = useState(false);
   const [mode, setMode] = useState<Mode>("build");
   const [credits, setCredits] = useState<number | null>(null);
+  const [usagePct, setUsagePct] = useState<number | null>(null);
   const [resetAt, setResetAt] = useState<number | null>(null);
   const [planExpired, setPlanExpired] = useState(false);
   const [files, setFiles] = useState<Record<string, string>>(project.files || {});
@@ -204,7 +206,7 @@ export function BuilderClient({
       if (u) {
         setIsAdminUser(isAdminEmail(u.email));
         getOrCreateWallet(u.uid)
-          .then((w) => { const v = walletView(w); setCredits(v.totalAvailable); setResetAt(v.nextReset); if (!isAdminEmail(u.email) && freeTrialInfo(w).expired) setPlanExpired(true); })
+          .then((w) => { const v = walletView(w); setCredits(v.totalAvailable); setUsagePct(v.allowance > 0 ? Math.min(100, Math.round((v.usedToday / v.allowance) * 100)) : 0); setResetAt(v.nextReset); if (!isAdminEmail(u.email) && freeTrialInfo(w).expired) setPlanExpired(true); })
           .catch(() => {});
       }
     });
@@ -324,7 +326,7 @@ export function BuilderClient({
     const admin = isAdminEmail(user.email);
     const cost = estimateCost(mode, !!attachment);
     if (!admin && planExpired) { setMessages((prev) => [...prev, { role: "assistant", content: "⚠️ Your 30-day free plan has ended. Upgrade on the Plans page to keep building." }]); return; }
-    if (!admin && credits !== null && credits < cost) { setMessages((prev) => [...prev, { role: "assistant", content: `⚠️ Out of credits — this needs ${cost} and you have ${credits}. Buy more on the Plans page.` }]); return; }
+    if (!admin && credits !== null && credits < cost) { setMessages((prev) => [...prev, { role: "assistant", content: `⚠️ You have used all of today's AI credits. They reset tomorrow at 12:00 AM — or buy a credit pack on the Plans page to keep building now.` }]); return; }
 
     if (textareaRef.current) textareaRef.current.style.height = "auto";
 
@@ -460,7 +462,8 @@ export function BuilderClient({
         content: full,
         createdAt: serverTimestamp(),
       });
-      if (!admin) { try { await chargeCredits(user.uid, cost, `${mode} generation`); setCredits((c) => (c !== null ? c - cost : c)); } catch {} }
+      if (!admin) { try { await chargeCredits(user.uid, cost, `${mode} generation`); setCredits((c) => (c !== null ? c - cost : c));
+          try { const w2 = await getOrCreateWallet(user.uid); const v2 = walletView(w2); setUsagePct(v2.allowance > 0 ? Math.min(100, Math.round((v2.usedToday / v2.allowance) * 100)) : 0); } catch {} } catch {} }
     } catch {
       setMessages((prev) => [
         ...prev.slice(0, -1),
@@ -686,6 +689,12 @@ export function BuilderClient({
           >
             🩺
           </button>
+          {!isAdminUser && usagePct !== null && (
+            <div className="hidden lg:flex items-center gap-2 w-36" title="Today's AI usage">
+              <UsageBar pct={usagePct} showPct={false} />
+              <span className="text-[11px] text-zinc-500 tabular-nums">{usagePct}%</span>
+            </div>
+          )}
           <button
             onClick={openHistory}
             className="btn-ghost px-3 py-1.5 rounded-xl text-sm text-zinc-300"

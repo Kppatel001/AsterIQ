@@ -22,7 +22,7 @@ export default function PlansPage() {
     <main className="max-w-6xl mx-auto px-6 pb-20">
       <nav className="flex items-center justify-between py-6"><Link href="/dashboard"><Logo /></Link><div className="flex items-center gap-4 text-sm"><Link href="/credits" className="text-violet-400 hover:underline">⚡ Credits</Link><Link href="/dashboard" className="text-zinc-300 hover:underline">← Dashboard</Link></div></nav>
       <header className="pt-6 text-center"><h1 className="text-4xl font-bold">Plans &amp; Credits</h1><p className="mt-3 text-zinc-400">You get daily AI credits based on your plan. Credits reset every 24 hours at midnight.</p>
-        {available !== null && (<p className="mt-2 text-sm">Available now: <span className="gradient-text font-bold">{available.toLocaleString("en-IN")}</span> credits · Plan: <span className="font-semibold">{plan.toUpperCase()}</span></p>)}
+        {available !== null && (<p className="mt-2 text-sm text-zinc-400">Your current plan: <span className="gradient-text font-bold">{plan.toUpperCase()}</span></p>)}
         {msg && <p className="mt-3 inline-block glass rounded-full px-4 py-1.5 text-sm text-emerald-300">{msg}</p>}</header>
       <section className="mt-10 grid md:grid-cols-2 lg:grid-cols-4 gap-4">{PLANS.map((p) => (
         <div key={p.id} className={`glass rounded-2xl p-6 flex flex-col ${p.highlight ? "ring-2 ring-violet-500/60" : ""}`}>

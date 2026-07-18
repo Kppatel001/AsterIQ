@@ -3,10 +3,10 @@ import { doc, getDoc, setDoc, updateDoc, addDoc, collection, serverTimestamp, in
 export type PlanId = "free" | "starter" | "pro" | "business";
 export type Plan = { id: PlanId; name: string; price: number; credits: number; highlight?: boolean; tagline: string; features: string[]; };
 export const PLANS: Plan[] = [
-  { id: "free", name: "Free", price: 0, credits: 2000, tagline: "For personal use", features: ["2 Projects","1 Workspace","Basic AI Models","Community Templates","GitHub Integration","Basic Deployment","Standard Support"] },
-  { id: "starter", name: "Starter", price: 999, credits: 20000, tagline: "For creators & builders", features: ["20 Projects","5 Team Members","Premium Templates","AI Agents","Workflow Builder","GitHub Deployment","Custom Domains","Email Support"] },
-  { id: "pro", name: "Pro", price: 1999, credits: 75000, highlight: true, tagline: "For professionals", features: ["Unlimited Projects","Planning Mode","Fast Build Mode","Marketplace Access","Unlimited Deployments","Version History","Priority Support"] },
-  { id: "business", name: "Business", price: 5999, credits: 250000, tagline: "For teams & enterprises", features: ["Unlimited Users","White Label","Enterprise Security","Private Workspaces","Team Management","Analytics","API Access","Dedicated Support"] },
+  { id: "free", name: "Free", price: 0, credits: 2000, tagline: "For personal use", features: ["2 Projects","Basic AI Models","Basic Deployment","Community Templates"] },
+  { id: "starter", name: "Starter", price: 999, credits: 20000, tagline: "For creators & builders", features: ["20 Projects","Premium AI Models","AI Agents","Workflow Builder","GitHub Deploy"] },
+  { id: "pro", name: "Pro", price: 1999, credits: 75000, highlight: true, tagline: "For professionals", features: ["Unlimited Projects","Planning Mode","Fast Build Mode","Marketplace","Priority Support"] },
+  { id: "business", name: "Business", price: 5999, credits: 250000, tagline: "For teams & enterprises", features: ["Unlimited Users","White Label","Enterprise Security","Analytics","Dedicated Support"] },
 ];
 export function dailyAllowance(planId: PlanId): number { const p = PLANS.find((x) => x.id === planId); return Math.floor((p?.credits ?? 2000) / 30); }
 export type Pack = { credits: number; price: number };
