@@ -165,6 +165,9 @@ function buildProjectRepoFiles(opts: {
       content: "node_modules/\n.next/\nout/\n.env\n.env*.local\n*.tsbuildinfo\nnext-env.d.ts\n.DS_Store\n",
     });
   }
+  if (!has("404.html") && projectFiles["index.html"]) {
+    out.push({ path: "404.html", content: projectFiles["index.html"] });
+  }
   out.push({
     path: "LICENSE",
     content: `MIT License\n\nCopyright (c) ${year} ${login}\n\nPermission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:\n\nThe above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.\n\nTHE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED.\n`,
@@ -279,6 +282,10 @@ export async function POST(req: Request) {
   };
   const isProject =
     !!projectFiles && typeof projectFiles === "object" && Object.keys(projectFiles).length > 0;
+  const projectPaths = isProject ? Object.keys(projectFiles!) : [];
+  const hasServer = projectPaths.some((p) => p === "server.js" || p.endsWith("/server.js"));
+  // A split static site (index.html + css/ + js/) still works fine on GitHub Pages.
+  const isStaticSite = isProject && !hasServer && projectPaths.includes("index.html");
   if (!name || (!code && !isProject)) {
     return Response.json({ error: "Missing name or code" }, { status: 400 });
   }
@@ -355,8 +362,8 @@ export async function POST(req: Request) {
       return Response.json({ error: push.error }, { status: 500 });
     }
 
-    // GitHub Pages only serves static files — a framework project needs a build step.
-    if (!isProject) {
+    // GitHub Pages serves static files only — an Express app needs a real host.
+    if (!isProject || isStaticSite) {
       await fetch(`${GH}/repos/${login}/${repo}/pages`, {
         method: "POST",
         headers: ghHeaders(token),
@@ -366,11 +373,14 @@ export async function POST(req: Request) {
 
     return Response.json({
       repoUrl: `https://github.com/${login}/${repo}`,
-      pagesUrl: isProject ? null : `https://${login}.github.io/${repo}/`,
-      importUrl: isProject
-        ? `https://vercel.com/new/import?s=https://github.com/${login}/${repo}`
-        : null,
-      type: isProject ? "project" : "static",
+      pagesUrl: !isProject || isStaticSite ? `https://${login}.github.io/${repo}/` : null,
+      importUrl: hasServer
+        ? `https://render.com/deploy?repo=https://github.com/${login}/${repo}`
+        : isProject && !isStaticSite
+          ? `https://vercel.com/new/import?s=https://github.com/${login}/${repo}`
+          : null,
+      importLabel: hasServer ? "Deploy on Render (free tier)" : "Deploy on Vercel",
+      type: hasServer ? "backend" : isProject ? "project" : "static",
       repoName: repo,
       filesPushed: files.map((f) => f.path),
     });

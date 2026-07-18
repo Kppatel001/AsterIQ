@@ -56,7 +56,7 @@ type Version = {
 type DeployState =
   | { status: "idle" }
   | { status: "deploying"; stage: string }
-  | { status: "done"; repoUrl: string; pagesUrl: string | null; importUrl?: string | null; files?: string[] }
+  | { status: "done"; repoUrl: string; pagesUrl: string | null; importUrl?: string | null; importLabel?: string | null; files?: string[] }
   | { status: "error"; message: string };
 
 const DEPLOY_STAGES = [
@@ -97,6 +97,39 @@ const PRIMARY_MODES: { id: Mode; icon: string; name: string; hint: string }[] = 
 ];
 // Secondary modes stay available as small icons.
 const SECONDARY_MODES: Mode[] = ["auto", "improve", "fix", "ask", "ceo"];
+
+/** Inline css/js files into index.html so separated projects still preview live. */
+function stitchPreview(files: Record<string, string>): string | null {
+  const paths = Object.keys(files);
+  const htmlPath =
+    paths.find((p) => p === "index.html") ||
+    paths.find((p) => p.endsWith("public/index.html")) ||
+    paths.find((p) => p.toLowerCase().endsWith(".html"));
+  if (!htmlPath) return null;
+
+  const dir = htmlPath.includes("/") ? htmlPath.slice(0, htmlPath.lastIndexOf("/") + 1) : "";
+  const resolve = (ref: string): string | null => {
+    const clean = ref.split("?")[0].replace(/^\.?\//, "");
+    return files[dir + clean] ?? files[clean] ?? null;
+  };
+
+  let html = files[htmlPath];
+  html = html.replace(/<link[^>]*rel=["']stylesheet["'][^>]*>/gi, (tag) => {
+    const m = tag.match(/href=["']([^"']+)["']/i);
+    if (!m || /^https?:/i.test(m[1])) return tag;
+    const css = resolve(m[1]);
+    return css ? `<style>\n${css}\n</style>` : tag;
+  });
+  html = html.replace(
+    /<script[^>]*\ssrc=["']([^"']+)["'][^>]*><\/script>/gi,
+    (tag, src: string) => {
+      if (/^https?:/i.test(src)) return tag;
+      const js = resolve(src);
+      return js ? `<script>\n${js}\n</script>` : tag;
+    }
+  );
+  return html;
+}
 
 /** Parse a multi-file project response: "### FILE: path" followed by a fenced block. */
 function parseFiles(text: string): Record<string, string> {
@@ -441,13 +474,21 @@ export function BuilderClient({
         });
         await saveVersion(finalHtml, content);
       }
-      if (activeMode === "project") {
-        const parsed = parseFiles(full);
-        if (Object.keys(parsed).length > 0) {
-          setFiles(parsed);
-          setActiveFile(Object.keys(parsed)[0]);
-          await updateDoc(doc(db, "projects", project.id), { files: parsed, updatedAt: serverTimestamp() });
-        }
+      // Every build now ships as separate files. Partial re-emits (improve/fix)
+      // merge into what's already there instead of replacing the project.
+      const parsed = parseFiles(full);
+      let stitched: string | null = null;
+      if (Object.keys(parsed).length > 0) {
+        const merged = { ...files, ...parsed };
+        setFiles(merged);
+        setActiveFile(Object.keys(parsed)[0]);
+        stitched = stitchPreview(merged);
+        if (stitched) setCode(stitched);
+        await updateDoc(doc(db, "projects", project.id), {
+          files: merged,
+          ...(stitched ? { code: stitched } : {}),
+          updatedAt: serverTimestamp(),
+        });
       }
       // CEO mode: save the startup pack as the project's business plan
       if (activeMode === "ceo") {
@@ -612,6 +653,7 @@ export function BuilderClient({
         repoUrl: data.repoUrl,
         pagesUrl: data.pagesUrl ?? null,
         importUrl: data.importUrl ?? null,
+        importLabel: data.importLabel ?? null,
         files: data.filesPushed,
       });
       await updateDoc(doc(db, "projects", project.id), {
@@ -639,6 +681,7 @@ export function BuilderClient({
 
   const activeModeInfo = MODES.find((m) => m.id === mode)!;
   const fileNames = Object.keys(files);
+  const hasBackend = fileNames.some((f) => f === "server.js" || f.endsWith("/server.js"));
   const currentFile = files[activeFile] !== undefined ? activeFile : (fileNames[0] || "");
 
   return (
@@ -767,7 +810,7 @@ export function BuilderClient({
               rel="noreferrer"
               className="text-cyan-300 hover:underline"
             >
-              Deploy on Vercel → one click, no setup
+              {deploy.importLabel || "One-click deploy"} → no setup needed
             </a>
           ) : null}
           <a
@@ -1014,39 +1057,58 @@ export function BuilderClient({
         {/* Preview / Code panel */}
         <div className="flex-1 min-w-0 bg-black/20 flex items-stretch justify-center overflow-auto">
           {tab === "preview" ? (
-            fileNames.length > 0 ? (
+            code ? (
+              <div className="h-full w-full flex flex-col min-h-0">
+                {hasBackend && (
+                  <div className="shrink-0 bg-amber-500/10 border-b border-amber-500/30 px-4 py-2 text-[11px] text-amber-200">
+                    Preview shows the frontend only — the Node server is not running here, so saved data
+                    and API calls stay empty. Run it locally or deploy to see it fully working.
+                  </div>
+                )}
+                <div className="flex-1 min-h-0 flex justify-center overflow-auto">
+                  <div
+                    className="h-full transition-all duration-300 mx-auto"
+                    style={{ width: DEVICE_WIDTHS[device], maxWidth: "100%" }}
+                  >
+                    <iframe
+                      title="App preview"
+                      sandbox="allow-scripts"
+                      srcDoc={code}
+                      className={`w-full h-full bg-white ${
+                        device !== "desktop" ? "border-x border-white/10" : ""
+                      }`}
+                    />
+                  </div>
+                </div>
+              </div>
+            ) : fileNames.length > 0 ? (
               <div className="h-full w-full overflow-auto p-6">
                 <div className="max-w-2xl mx-auto glass rounded-2xl p-6">
                   <div className="flex items-center gap-3">
                     <LogoMark size={28} />
                     <div>
-                      <h2 className="font-bold">Full project generated</h2>
-                      <p className="text-xs text-zinc-400">{fileNames.length} files · Next.js + React + TypeScript</p>
+                      <h2 className="font-bold">Project generated</h2>
+                      <p className="text-xs text-zinc-400">
+                        {fileNames.length} files{hasBackend ? " · Node + Express + SQLite" : ""}
+                      </p>
                     </div>
                   </div>
-                  <p className="mt-4 text-sm text-zinc-400">Multi-file projects need a build step, so they can&apos;t run in the live preview. Open the <span className="text-white font-medium">Code</span> tab to browse files, or deploy to run it.</p>
+                  <p className="mt-4 text-sm text-zinc-400">
+                    Open the <span className="text-white font-medium">Code</span> tab to browse the
+                    files, or deploy to run it.
+                  </p>
                   <div className="mt-4 rounded-xl bg-black/30 border border-white/10 p-3 max-h-64 overflow-auto">
-                    {fileNames.map((f) => (<p key={f} className="text-[11px] font-mono text-zinc-400 py-0.5">📄 {f}</p>))}
+                    {fileNames.map((f) => (
+                      <p key={f} className="text-[11px] font-mono text-zinc-400 py-0.5">
+                        📄 {f}
+                      </p>
+                    ))}
                   </div>
-                  <p className="mt-4 text-xs text-zinc-500">Run locally: <span className="font-mono text-zinc-300">npm install &amp;&amp; npm run dev</span></p>
+                  <p className="mt-4 text-xs text-zinc-500">
+                    Run locally:{" "}
+                    <span className="font-mono text-zinc-300">npm install &amp;&amp; npm start</span>
+                  </p>
                 </div>
-              </div>
-            ) : code ? (
-              <div
-                className="h-full transition-all duration-300 mx-auto"
-                style={{
-                  width: DEVICE_WIDTHS[device],
-                  maxWidth: "100%",
-                }}
-              >
-                <iframe
-                  title="App preview"
-                  sandbox="allow-scripts"
-                  srcDoc={code}
-                  className={`w-full h-full bg-white ${
-                    device !== "desktop" ? "border-x border-white/10" : ""
-                  }`}
-                />
               </div>
             ) : (
               <div className="h-full w-full flex flex-col items-center justify-center gap-3 text-zinc-500 text-sm">
