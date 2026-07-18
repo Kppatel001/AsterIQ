@@ -944,8 +944,8 @@ export function BuilderClient({
               </div>
             ) : (
               <div className="h-full w-full flex flex-col items-center justify-center gap-3 text-zinc-500 text-sm">
-                <div className="w-14 h-14 rounded-2xl glass flex items-center justify-center text-2xl">
-                  ✦
+                <div className="w-14 h-14 rounded-2xl glass flex items-center justify-center">
+                  <LogoMark size={32} />
                 </div>
                 Your app will appear here as it&apos;s generated.
               </div>
