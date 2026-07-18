@@ -199,6 +199,17 @@ export function BuilderClient({
   const [planExpired, setPlanExpired] = useState(false);
   const [files, setFiles] = useState<Record<string, string>>(project.files || {});
   const [activeFile, setActiveFile] = useState<string>("");
+
+  // A project saved before preview-stitching existed has files but no preview
+  // document. Build one on open so the Preview tab is never blank.
+  useEffect(() => {
+    if (code) return;
+    const saved = project.files || {};
+    if (Object.keys(saved).length === 0) return;
+    const stitched = stitchPreview(saved);
+    if (stitched) setCode(stitched);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const [isAdminUser, setIsAdminUser] = useState(false);
   const [showMoreModes, setShowMoreModes] = useState(false);
   const [provider, setProvider] = useState<"random" | "gemini" | "nvidia">(
@@ -455,9 +466,17 @@ export function BuilderClient({
           ...prev.slice(0, -1),
           { role: "assistant", content: snapshot },
         ]);
-        if (activeMode !== "ask" && activeMode !== "architect" && activeMode !== "ceo" && activeMode !== "project") {
-          const html = extractHtml(snapshot);
-          if (html) setCode(html);
+        if (activeMode !== "ask" && activeMode !== "architect" && activeMode !== "ceo") {
+          // Files stream in one complete block at a time — stitch whatever is
+          // finished so the preview fills in live instead of waiting for the end.
+          const partial = parseFiles(snapshot);
+          if (Object.keys(partial).length > 0) {
+            const live = stitchPreview({ ...files, ...partial });
+            if (live) setCode(live);
+          } else {
+            const html = extractHtml(snapshot);
+            if (html) setCode(html);
+          }
         }
       }
 
@@ -466,6 +485,7 @@ export function BuilderClient({
           ? extractHtml(full)
           : null;
       if (finalHtml) {
+        setTab("preview");
         setCode(finalHtml);
         await updateDoc(doc(db, "projects", project.id), {
           code: finalHtml,
@@ -482,7 +502,10 @@ export function BuilderClient({
         setFiles(merged);
         setActiveFile(Object.keys(parsed)[0]);
         stitched = stitchPreview(merged);
-        if (stitched) setCode(stitched);
+        if (stitched) {
+          setCode(stitched);
+          setTab("preview");
+        }
         await updateDoc(doc(db, "projects", project.id), {
           files: merged,
           ...(stitched ? { code: stitched } : {}),
