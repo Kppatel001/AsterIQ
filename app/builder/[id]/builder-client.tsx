@@ -81,7 +81,6 @@ const MODES: { id: Mode; label: string; hint: string }[] = [
 
 // Primary chat-box choice: Planning (plan the idea + write requirements) vs Fast (build the code).
 const PRIMARY_MODES: { id: Mode; icon: string; name: string; hint: string }[] = [
-  { id: "project", icon: "🗂", name: "Project", hint: "Full multi-file Next.js project — browse files in Code, deploy to run" },
   {
     id: "architect",
     icon: "📐",
@@ -857,7 +856,7 @@ export function BuilderClient({
                 </button>
               </div>
             )}
-            <div className="grid grid-cols-3 gap-1.5 rounded-xl bg-white/5 p-1">
+            <div className="grid grid-cols-2 gap-1.5 rounded-xl bg-white/5 p-1">
               {PRIMARY_MODES.map((m) => (
                 <button
                   key={m.id}
