@@ -55,7 +55,7 @@ type Version = {
 type DeployState =
   | { status: "idle" }
   | { status: "deploying"; stage: string }
-  | { status: "done"; repoUrl: string; pagesUrl: string; files?: string[] }
+  | { status: "done"; repoUrl: string; pagesUrl: string | null; importUrl?: string | null; files?: string[] }
   | { status: "error"; message: string };
 
 const DEPLOY_STAGES = [
@@ -580,12 +580,13 @@ export function BuilderClient({
       setDeploy({
         status: "done",
         repoUrl: data.repoUrl,
-        pagesUrl: data.pagesUrl,
+        pagesUrl: data.pagesUrl ?? null,
+        importUrl: data.importUrl ?? null,
         files: data.filesPushed,
       });
       await updateDoc(doc(db, "projects", project.id), {
         repoUrl: data.repoUrl,
-        pagesUrl: data.pagesUrl,
+        pagesUrl: data.pagesUrl ?? null,
         repoName: data.repoName,
         deployedAt: serverTimestamp(),
       });
@@ -595,9 +596,9 @@ export function BuilderClient({
         projectId: project.id,
         projectName: project.name,
         repoUrl: data.repoUrl,
-        pagesUrl: data.pagesUrl,
+        pagesUrl: data.pagesUrl ?? null,
         status: "success",
-        provider: "GitHub Pages",
+        provider: data.type === "project" ? "GitHub + Vercel" : "GitHub Pages",
         createdAt: serverTimestamp(),
       });
     } catch {
@@ -714,14 +715,25 @@ export function BuilderClient({
       {deploy.status === "done" && (
         <div className="bg-emerald-500/10 border-b border-emerald-500/30 px-4 py-2.5 text-sm flex flex-wrap items-center gap-x-4 gap-y-1">
           <span className="text-emerald-300 font-medium">✓ Deployed!</span>
-          <a
-            href={deploy.pagesUrl}
-            target="_blank"
-            rel="noreferrer"
-            className="text-cyan-300 hover:underline"
-          >
-            Live site → {deploy.pagesUrl}
-          </a>
+          {deploy.pagesUrl ? (
+            <a
+              href={deploy.pagesUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="text-cyan-300 hover:underline"
+            >
+              Live site → {deploy.pagesUrl}
+            </a>
+          ) : deploy.importUrl ? (
+            <a
+              href={deploy.importUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="text-cyan-300 hover:underline"
+            >
+              Deploy on Vercel → one click, no setup
+            </a>
+          ) : null}
           <a
             href={deploy.repoUrl}
             target="_blank"
