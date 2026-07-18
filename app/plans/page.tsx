@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { onAuthStateChanged, type User } from "firebase/auth";
-import { auth, clearAuthCookie } from "@/frontend/firebase/client";
+import { auth } from "@/frontend/firebase/client";
 import { Logo } from "@/frontend/brand";
 import { PLANS, PACKS, type PlanId, getOrCreateWallet, walletView, purchasePlan, buyPack, dailyAllowance } from "@/frontend/credits";
 export default function PlansPage() {
@@ -14,15 +14,15 @@ export default function PlansPage() {
   const [busy, setBusy] = useState<string | null>(null);
   const [msg, setMsg] = useState(""); const [ready, setReady] = useState(false);
   async function refresh(uid: string){ const w = await getOrCreateWallet(uid); const v = walletView(w); setPlan(w.plan||"free"); setAvailable(v.totalAvailable); }
-  useEffect(() => { const unsub = onAuthStateChanged(auth, async (u) => { if (!u) { clearAuthCookie(); router.push("/login"); return; } setUser(u); setReady(true); try { await refresh(u.uid); } catch {} }); return () => unsub(); }, [router]);
-  async function choosePlan(id: PlanId, name: string){ if (!user||busy) return; setBusy(id); setMsg(""); try { await purchasePlan(user.uid, id); await refresh(user.uid); setMsg(`✓ ${name} plan activated — ${dailyAllowance(id).toLocaleString("en-IN")} credits/day.`); } catch { setMsg("Something went wrong."); } finally { setBusy(null); } }
-  async function buy(credits: number){ if (!user||busy) return; setBusy("pack"+credits); setMsg(""); try { await buyPack(user.uid, credits); await refresh(user.uid); setMsg(`✓ ${credits.toLocaleString("en-IN")} credits added — they never expire.`); } catch { setMsg("Something went wrong."); } finally { setBusy(null); } }
+  useEffect(() => { const unsub = onAuthStateChanged(auth, async (u) => { if (!u) { setReady(true); return; } setUser(u); setReady(true); try { await refresh(u.uid); } catch {} }); return () => unsub(); }, [router]);
+  async function choosePlan(id: PlanId, name: string){ if (!user) { router.push("/signup"); return; } if (busy) return; setBusy(id); setMsg(""); try { await purchasePlan(user.uid, id); await refresh(user.uid); setMsg(`✓ ${name} plan activated — ${dailyAllowance(id).toLocaleString("en-IN")} credits/day.`); } catch { setMsg("Something went wrong."); } finally { setBusy(null); } }
+  async function buy(credits: number){ if (!user) { router.push("/signup"); return; } if (busy) return; setBusy("pack"+credits); setMsg(""); try { await buyPack(user.uid, credits); await refresh(user.uid); setMsg(`✓ ${credits.toLocaleString("en-IN")} credits added — they never expire.`); } catch { setMsg("Something went wrong."); } finally { setBusy(null); } }
   if (!ready) return <main className="min-h-screen" />;
   return (
     <main className="max-w-6xl mx-auto px-6 pb-20">
-      <nav className="flex items-center justify-between py-6"><Link href="/dashboard"><Logo /></Link><div className="flex items-center gap-4 text-sm"><Link href="/credits" className="text-violet-400 hover:underline">⚡ Credits</Link><Link href="/dashboard" className="text-zinc-300 hover:underline">← Dashboard</Link></div></nav>
+      <nav className="flex items-center justify-between py-6"><Link href="/dashboard"><Logo /></Link><div className="flex items-center gap-4 text-sm">{user ? (<><Link href="/credits" className="text-violet-400 hover:underline">⚡ Credits</Link><Link href="/dashboard" className="text-zinc-300 hover:underline">← Dashboard</Link></>) : (<><Link href="/login" className="text-zinc-300 hover:underline">Log in</Link><Link href="/signup" className="btn-primary px-4 py-1.5 rounded-xl">Get started free</Link></>)}</div></nav>
       <header className="pt-6 text-center"><h1 className="text-4xl font-bold">Plans &amp; Credits</h1><p className="mt-3 text-zinc-400">You get daily AI credits based on your plan. Credits reset every 24 hours at midnight.</p>
-        {available !== null && (<p className="mt-2 text-sm text-zinc-400">Your current plan: <span className="gradient-text font-bold">{plan.toUpperCase()}</span></p>)}
+        {user ? (available !== null && (<p className="mt-2 text-sm text-zinc-400">Your current plan: <span className="gradient-text font-bold">{plan.toUpperCase()}</span></p>)) : (<p className="mt-2 text-sm text-zinc-400">Browse the plans below — <Link href="/signup" className="text-violet-400 hover:underline">create a free account</Link> when you are ready to start.</p>)}
         {msg && <p className="mt-3 inline-block glass rounded-full px-4 py-1.5 text-sm text-emerald-300">{msg}</p>}</header>
       <section className="mt-10 grid md:grid-cols-2 lg:grid-cols-4 gap-4">{PLANS.map((p) => (
         <div key={p.id} className={`glass rounded-2xl p-6 flex flex-col ${p.highlight ? "ring-2 ring-violet-500/60" : ""}`}>
@@ -31,7 +31,7 @@ export default function PlansPage() {
           <div className="mt-3 flex items-baseline gap-1"><span className="text-3xl font-extrabold gradient-text">₹{p.price.toLocaleString("en-IN")}</span><span className="text-zinc-500 text-sm">/ month</span></div>
           <div className="mt-3 rounded-xl bg-white/5 border border-white/10 py-2 text-center text-sm font-semibold text-cyan-300">{dailyAllowance(p.id).toLocaleString("en-IN")} AI Credits / Day</div>
           <ul className="mt-4 space-y-1.5 text-sm text-zinc-300 flex-1">{p.features.map((f) => (<li key={f} className="flex gap-2"><span className="text-emerald-400">✓</span>{f}</li>))}</ul>
-          <button onClick={() => choosePlan(p.id, p.name)} disabled={plan === p.id || busy !== null} className={`mt-5 py-2.5 rounded-xl text-sm font-semibold ${plan === p.id ? "bg-white/10 text-zinc-400 cursor-default" : "btn-primary"}`}>{busy === p.id ? "Activating…" : plan === p.id ? "Current Plan" : p.price === 0 ? "Switch to Free" : `Choose ${p.name}`}</button>
+          <button onClick={() => choosePlan(p.id, p.name)} disabled={!!user && (plan === p.id || busy !== null)} className={`mt-5 py-2.5 rounded-xl text-sm font-semibold ${plan === p.id ? "bg-white/10 text-zinc-400 cursor-default" : "btn-primary"}`}>{!user ? "Get started" : busy === p.id ? "Activating…" : plan === p.id ? "Current Plan" : p.price === 0 ? "Switch to Free" : `Choose ${p.name}`}</button>
         </div>))}</section>
       <section className="mt-14"><h2 className="text-2xl font-bold text-center">Need more credits? One-time credit packs</h2><p className="mt-2 text-center text-zinc-400 text-sm">Use anytime. These credits never expire and are used after your daily credits.</p>
         <div className="mt-6 grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">{PACKS.map((pk) => (

@@ -380,8 +380,11 @@ export function BuilderClient({
         }),
       });
 
-      // Rate limit (or other JSON error) — show the message in the chat.
-      if (res.status === 429 || (!res.ok && !res.body)) {
+      // The server deducts credits itself when a service account is configured.
+      const serverCharged = res.headers.get("X-Credits-Enforced") === "1";
+
+      // Rate limit, out of credits, or any other JSON error — show it in the chat.
+      if (!res.ok) {
         let errMsg = "Generation failed — please try again.";
         try {
           const j = await res.json();
@@ -473,8 +476,21 @@ export function BuilderClient({
         content: full,
         createdAt: serverTimestamp(),
       });
-      if (!admin) { try { await chargeCredits(user.uid, cost, `${activeMode} generation`); setCredits((c) => (c !== null ? c - cost : c));
-          try { const w2 = await getOrCreateWallet(user.uid); const v2 = walletView(w2); setUsagePct(v2.allowance > 0 ? Math.min(100, Math.round((v2.usedToday / v2.allowance) * 100)) : 0); } catch {} } catch {} }
+      if (!admin && !serverCharged) {
+        try {
+          await chargeCredits(user.uid, cost, `${activeMode} generation`);
+          setCredits((c) => (c !== null ? c - cost : c));
+        } catch {}
+      }
+      // Refresh today's usage bar however the credits were deducted.
+      if (!admin) {
+        try {
+          const w2 = await getOrCreateWallet(user.uid);
+          const v2 = walletView(w2);
+          setCredits(walletView(w2).totalAvailable);
+          setUsagePct(v2.allowance > 0 ? Math.min(100, Math.round((v2.usedToday / v2.allowance) * 100)) : 0);
+        } catch {}
+      }
     } catch {
       setMessages((prev) => [
         ...prev.slice(0, -1),

@@ -6,6 +6,8 @@ import {
   type ChatMsg,
 } from "@/backend/aiProviders";
 import { checkRateLimit } from "@/backend/rateLimit";
+import { isAdminEmail } from "@/backend/admin";
+import { chargeServer } from "@/backend/creditsServer";
 
 export const maxDuration = 120; // multi-provider (Gemini + NVIDIA) with rate limiting
 
@@ -26,7 +28,7 @@ async function verifyFirebaseToken(authHeader: string | null) {
       issuer: `https://securetoken.google.com/${projectId}`,
       audience: projectId,
     });
-    return payload.sub ?? null;
+    return { uid: String(payload.sub ?? ""), email: typeof payload.email === "string" ? payload.email : null };
   } catch {
     return null;
   }
@@ -151,10 +153,12 @@ Act as a startup co-founder analyzing the user's app as a business. Produce a ma
 };
 
 export async function POST(req: Request) {
-  const uid = await verifyFirebaseToken(req.headers.get("authorization"));
-  if (!uid) {
+  const identity = await verifyFirebaseToken(req.headers.get("authorization"));
+  if (!identity?.uid) {
     return Response.json({ error: "Unauthorized" }, { status: 401 });
   }
+  const uid = identity.uid;
+  const callerIsAdmin = isAdminEmail(identity.email);
 
   const {
     messages,
@@ -180,6 +184,19 @@ export async function POST(req: Request) {
 
   if (!Array.isArray(messages) || messages.length === 0) {
     return Response.json({ error: "No messages" }, { status: 400 });
+  }
+
+  // ---- Credits: deducted here on the server so the browser can't skip it ----
+  const charge = await chargeServer(uid, (mode ?? "auto") as Mode, !!attachment, callerIsAdmin);
+  if (!charge.ok) {
+    return Response.json(
+      {
+        error:
+          "You have used all of today's AI credits. They reset tomorrow at 12:00 AM — or buy a credit pack to keep building now.",
+        code: "OUT_OF_CREDITS",
+      },
+      { status: 402 }
+    );
   }
 
   // ---- Per-user rate limit (daily) ----
@@ -314,6 +331,7 @@ ${ADDENDA.build}`
       "Content-Type": "text/plain; charset=utf-8",
       "Cache-Control": "no-cache",
       "X-AI-Provider": activeProvider,
+      "X-Credits-Enforced": charge.enforced ? "1" : "0",
       "X-RateLimit-Limit": String(rl.limit),
       "X-RateLimit-Remaining": String(rl.remaining),
       "X-RateLimit-Reset": String(rl.resetAt),
