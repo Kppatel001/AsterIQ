@@ -9,3 +9,9 @@ out/
 *.tsbuildinfo
 next-env.d.ts
 .DS_Store
+
+# Python backend
+__pycache__/
+*.pyc
+.venv/
+backend-python/.env
